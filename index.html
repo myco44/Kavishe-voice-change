@@ -1,0 +1,639 @@
+<!doctype html>
+<html lang="sw">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Kavishe Voice Lab — Record + Voice-Change + Live-Video Cartoonify</title>
+<style>
+  :root{--bg:#061021;--card:#082035;--accent:#4da3ff;--ok:#19c37d;--muted:#9fb3d8}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial;background:linear-gradient(180deg,var(--bg),#04101a);color:#eaf3ff}
+  .wrap{max-width:980px;margin:18px auto;padding:12px;display:grid;grid-template-columns:1fr;gap:12px}
+  h1{margin:0 0 6px;font-size:20px}
+  .card{background:var(--card);border:1px solid rgba(255,255,255,0.04);padding:12px;border-radius:12px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  button,select{background:#06293f;border:1px solid rgba(255,255,255,0.04);padding:8px 10px;border-radius:8px;color:inherit;font-weight:700}
+  input[type="range"]{width:220px}
+  label.small{font-size:13px;color:var(--muted)}
+  #videoPreview{width:100%;max-height:360px;border-radius:8px;background:#000}
+  #canvasVideo{width:100%;max-height:360px;border-radius:8px;display:none}
+  textarea{width:100%;min-height:120px;border-radius:8px;padding:8px;background:#021523;color:#dff0ff;border:1px solid rgba(255,255,255,0.03)}
+  .preset{padding:6px 10px;border-radius:8px;background:#04283a;border:1px solid rgba(255,255,255,0.03)}
+  .knob{width:170px;height:36px;border-radius:999px;background:#021826;border:1px solid rgba(255,255,255,0.03);display:flex;align-items:center;padding:6px}
+  .drag{width:26px;height:26px;border-radius:999px;background:var(--accent);box-shadow:0 2px 6px rgba(0,0,0,.6);touch-action:none}
+  .small-muted{font-size:12px;color:var(--muted)}
+  .danger{background:#8b2233}
+  @media(max-width:700px){ .row{flex-direction:column;align-items:stretch} input[type="range"]{width:100%} .knob{width:100%} }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Kavishe Voice Lab — Record & Change Voice (Local, Browser)</h1>
+      <div class="small-muted">Tahadhari: Usitumie kuiga watu wengine bila idhini yao. Hii ni demo ya kubadilisha sauti kwa madhumuni ya burudani/ubunifu.</div>
+    </div>
+
+    <!-- Recording -->
+    <div class="card">
+      <div class="row">
+        <button id="btnStartRec">🎙️ Anza Recording</button>
+        <button id="btnStopRec" disabled>⏹️ Simamisha Recording</button>
+        <button id="btnPlayRaw" disabled>▶️ Cheza Asili</button>
+        <button id="btnPlayFx" disabled>▶️ Cheza Kwa FX</button>
+        <button id="btnDownload" disabled>📥 Pakua WAV</button>
+        <label class="small" style="margin-left:auto">Tempo / Pitch:</label>
+        <input id="pitchRange" type="range" min="0.5" max="2.0" step="0.01" value="1.0">
+        <span id="pitchVal" class="small-muted">1.00x</span>
+      </div>
+
+      <hr style="border:none;border-top:1px solid rgba(255,255,255,0.03);margin:10px 0">
+
+      <div class="row">
+        <label class="preset">Preset:
+          <select id="preset">
+            <option value="neutral">Neutral (asili)</option>
+            <option value="child_female">Mtoto (Kike)</option>
+            <option value="child_male">Mtoto (Mvulana)</option>
+            <option value="young_female">Kike Mdogo</option>
+            <option value="young_male">Mwanaume Mdogo</option>
+            <option value="adult_male">Mwanaume</option>
+            <option value="adult_female">Mwanamke</option>
+            <option value="old_male">Mzee</option>
+            <option value="old_female">Mzee (mke)</option>
+            <option value="robot">Robot / Deep</option>
+            <option value="cartoon">Cartoon</option>
+            <option value="alien">Alien (fx)</option>
+          </select>
+        </label>
+
+        <label class="small-muted">Formant shift:
+          <input id="formantRange" type="range" min="-6" max="6" step="0.1" value="0">
+        </label>
+        <span id="formantVal" class="small-muted">0.0</span>
+      </div>
+
+      <div style="margin-top:10px">
+        <div class="small-muted">Drag slider (touch friendly):</div>
+        <div class="knob" id="dragTrack">
+          <div id="dragKnob" class="drag" style="transform:translateX(0)"></div>
+        </div>
+        <div class="small-muted" style="margin-top:6px">Drag-to-change pitch multiplier (same as range). Use finger to slide.</div>
+      </div>
+
+      <div style="margin-top:10px">
+        <label class="small-muted">Extra FX toggles:</label>
+        <div class="row" style="margin-top:6px">
+          <label><input type="checkbox" id="reverb"> Reverb</label>
+          <label><input type="checkbox" id="distort"> Distortion</label>
+          <label><input type="checkbox" id="robotize"> Robotize (ring-mod)</label>
+          <label><input type="checkbox" id="bandpass"> Narrow voice (bandpass)</label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Visual / Video Cartoonify -->
+    <div class="card">
+      <div class="row">
+        <div style="flex:1">
+          <div class="small-muted">Video Preview (camera)</div>
+          <video id="videoPreview" autoplay playsinline muted></video>
+          <canvas id="canvasVideo"></canvas>
+        </div>
+        <div style="width:320px">
+          <div class="small-muted">Video Controls</div>
+          <div class="row" style="margin-top:8px">
+            <button id="btnStartCam">📷 Start Camera</button>
+            <button id="btnStopCam" disabled>⛔ Stop Camera</button>
+            <button id="btnCartoon" disabled>🖼️ Toggle Cartoon</button>
+            <label style="margin-left:6px" class="small-muted">Posterize:
+              <input id="posterize" type="range" min="2" max="12" value="6">
+            </label>
+          </div>
+          <div style="margin-top:10px">
+            <div class="small-muted">Cartoon algorithm: posterize + edge detection (browser-only, no external ML).</div>
+            <div style="margin-top:8px"><button id="btnCaptureFrame">📸 Capture Frame (with FX)</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Debug / Transcript -->
+    <div class="card">
+      <div class="row">
+        <div style="flex:1">
+          <div class="small-muted">Recorded waveform preview (visual):</div>
+          <canvas id="waveCanvas" style="width:100%;height:80px;background:#00121a;border-radius:6px;margin-top:8px"></canvas>
+        </div>
+        <div style="width:260px">
+          <div class="small-muted">Status</div>
+          <div id="statusBox" class="small-muted" style="background:#02141b;padding:8px;border-radius:6px;margin-top:8px">Idle</div>
+        </div>
+      </div>
+      <div style="margin-top:12px">
+        <div class="small-muted">Output log / notes:</div>
+        <textarea id="log" placeholder="Logs..." readonly></textarea>
+      </div>
+    </div>
+
+  </div>
+
+<script>
+/*
+ KAVISHE VOICE LAB (browser-only)
+ - Records audio (MediaRecorder)
+ - Plays raw or with WebAudio effects:
+   - pitch (playbackRate & granular approximations via offline stretching not implemented)
+   - formant-ish EQ simulation via filters
+   - reverb (Convolver using small impulse)
+   - distortion (waveshaper)
+   - robotize (ring modulation)
+ - Drag slider updates pitch multiplier
+ - Video cartoonify: posterize + simple edge detection on canvas (no ML)
+ NOTES / LIMITS:
+ - True formant-preserving pitch-shift (voice conversion) needs specialized DSP / ML; this demo uses playbackRate + filters to approximate different voices.
+ - Do not use to impersonate real people without consent.
+*/
+
+// ---------- Utilities ----------
+const log = (s) => {
+  const ta = document.getElementById('log'); ta.value = (new Date()).toLocaleTimeString() + ' • ' + s + '\n' + ta.value;
+};
+const status = (s) => { document.getElementById('statusBox').textContent = s; };
+function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+
+// ---------- Recording logic ----------
+let mediaStream=null, mediaRecorder=null, recordedBlobs=[], audioContext=null;
+let rawAudioBuffer=null;
+
+const btnStartRec = document.getElementById('btnStartRec');
+const btnStopRec  = document.getElementById('btnStopRec');
+const btnPlayRaw  = document.getElementById('btnPlayRaw');
+const btnPlayFx   = document.getElementById('btnPlayFx');
+const btnDownload = document.getElementById('btnDownload');
+
+btnStartRec.onclick = async () => {
+  try {
+    if(!mediaStream) {
+      mediaStream = await navigator.mediaDevices.getUserMedia({ audio:true, video:false });
+      log('Mic access granted.');
+    }
+    recordedBlobs = [];
+    mediaRecorder = new MediaRecorder(mediaStream, {mimeType: 'audio/webm;codecs=opus'});
+    mediaRecorder.ondataavailable = e => { if(e.data && e.data.size) recordedBlobs.push(e.data); };
+    mediaRecorder.onstop = async () => {
+      const blob = new Blob(recordedBlobs, {type: 'audio/webm'});
+      const arrayBuffer = await blob.arrayBuffer();
+      if(!audioContext) audioContext = new (window.AudioContext||window.webkitAudioContext)();
+      rawAudioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+      log('Recording stopped. Audio decoded to buffer.');
+      btnPlayRaw.disabled = false;
+      btnPlayFx.disabled = false;
+      btnDownload.disabled = false;
+      drawWave(rawAudioBuffer);
+    };
+    mediaRecorder.start();
+    status('Recording...');
+    btnStartRec.disabled=true; btnStopRec.disabled=false;
+    log('Recording started.');
+  } catch (err) {
+    log('Error starting recording: ' + err.message);
+    alert('Mic permission required.');
+  }
+};
+
+btnStopRec.onclick = () => {
+  if(mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop();
+    status('Stopped recording.');
+    btnStopRec.disabled=true; btnStartRec.disabled=false;
+  }
+};
+
+// ---------- Simple WAV export ----------
+btnDownload.onclick = () => {
+  if(!rawAudioBuffer) return;
+  const wav = bufferToWav(rawAudioBuffer);
+  const blob = new Blob([wav], {type: 'audio/wav'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `kavishe-record-${Date.now()}.wav`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+
+// convert AudioBuffer to WAV (float -> 16-bit PCM)
+function bufferToWav(abuffer, opt={}) {
+  const numChannels = abuffer.numberOfChannels;
+  const sampleRate = abuffer.sampleRate;
+  const format = 1; // PCM
+  const bitDepth = 16;
+
+  let result;
+  if (numChannels === 2) {
+    result = interleave(abuffer.getChannelData(0), abuffer.getChannelData(1));
+  } else {
+    result = abuffer.getChannelData(0);
+  }
+
+  const buffer = new ArrayBuffer(44 + result.length * 2);
+  const view = new DataView(buffer);
+
+  /* RIFF identifier */
+  writeString(view, 0, 'RIFF');
+  /* file length */
+  view.setUint32(4, 36 + result.length * 2, true);
+  /* RIFF type */
+  writeString(view, 8, 'WAVE');
+  /* format chunk identifier */
+  writeString(view, 12, 'fmt ');
+  /* format chunk length */
+  view.setUint32(16, 16, true);
+  /* sample format (raw) */
+  view.setUint16(20, format, true);
+  /* channel count */
+  view.setUint16(22, numChannels, true);
+  /* sample rate */
+  view.setUint32(24, sampleRate, true);
+  /* byte rate (sampleRate * blockAlign) */
+  view.setUint32(28, sampleRate * numChannels * bitDepth/8, true);
+  /* block align (channel count * bytes per sample) */
+  view.setUint16(32, numChannels * bitDepth/8, true);
+  /* bits per sample */
+  view.setUint16(34, bitDepth, true);
+  /* data chunk identifier */
+  writeString(view, 36, 'data');
+  /* data chunk length */
+  view.setUint32(40, result.length * 2, true);
+
+  // write the PCM samples
+  let offset = 44;
+  for (let i = 0; i < result.length; i++, offset += 2) {
+    const s = Math.max(-1, Math.min(1, result[i]));
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+  }
+  return view;
+}
+function interleave(left, right) {
+  const length = left.length + right.length;
+  const result = new Float32Array(length);
+  let inputIndex = 0;
+  for (let index = 0; index < length;) {
+    result[index++] = left[inputIndex];
+    result[index++] = right[inputIndex];
+    inputIndex++;
+  }
+  return result;
+}
+function writeString(view, offset, string) {
+  for (let i = 0; i < string.length; i++) {
+    view.setUint8(offset + i, string.charCodeAt(i));
+  }
+}
+
+// ---------- Playback with FX ----------
+const pitchRange = document.getElementById('pitchRange');
+const pitchVal = document.getElementById('pitchVal');
+const formantRange = document.getElementById('formantRange');
+const formantVal = document.getElementById('formantVal');
+
+pitchRange.oninput = () => {
+  pitchVal.textContent = parseFloat(pitchRange.value).toFixed(2) + 'x';
+  // update drag knob position too
+  const track = document.getElementById('dragTrack');
+  const knob = document.getElementById('dragKnob');
+  const pct = (pitchRange.value - pitchRange.min) / (pitchRange.max - pitchRange.min);
+  const w = track.clientWidth - 26;
+  knob.style.transform = `translateX(${Math.round(pct*w)}px)`;
+};
+formantRange.oninput = () => { formantVal.textContent = parseFloat(formantRange.value).toFixed(2); };
+
+let fxNodes = null; // keep references
+
+async function playBufferWithFx(buf) {
+  if(!buf) return;
+  if(!audioContext) audioContext = new (window.AudioContext||window.webkitAudioContext)();
+  const ctx = audioContext;
+  // create source
+  const source = ctx.createBufferSource();
+  source.buffer = buf;
+
+  // create processing graph based on UI
+  const gain = ctx.createGain(); gain.gain.value = 1;
+
+  // Pitch: two approaches:
+  // 1) For quick effect we change playbackRate (affects speed as well).
+  // 2) For better (but more complex) formant preservation, we'd need a time-stretch/pitch-shift algorithm (not implemented here).
+  source.playbackRate.value = parseFloat(pitchRange.value);
+
+  // Filters to simulate "formant" effect (simple approach)
+  const formantShift = parseFloat(formantRange.value); // -6 .. +6
+  // We'll implement series of biquad filters to nudge spectral shape
+  const lowShelf = ctx.createBiquadFilter(); lowShelf.type = 'lowshelf';
+  lowShelf.frequency.value = 300 + formantShift * 30; lowShelf.gain.value = formantShift * -3;
+  const highShelf = ctx.createBiquadFilter(); highShelf.type = 'highshelf';
+  highShelf.frequency.value = 3000 + formantShift * 100; highShelf.gain.value = formantShift * 2;
+
+  // Optional effects
+  let lastNode = source;
+  lastNode.connect(lowShelf);
+  lowShelf.connect(highShelf);
+
+  // Bandpass narrow for "old" or "telephone" style
+  const bandpass = ctx.createBiquadFilter(); bandpass.type = 'bandpass';
+  bandpass.frequency.value = 800;
+  bandpass.Q.value = document.getElementById('bandpass').checked ? 8 : 1;
+
+  highShelf.connect(bandpass);
+
+  // Distortion
+  const distort = ctx.createWaveShaper();
+  if(document.getElementById('distort').checked){
+    distort.curve = makeDistortionCurve(400);
+    distort.oversample = '4x';
+    bandpass.connect(distort);
+    lastNode = distort;
+  } else { lastNode = bandpass; }
+
+  // Reverb (simple impulse)
+  let convolver = null;
+  if(document.getElementById('reverb').checked){
+    convolver = ctx.createConvolver();
+    convolver.buffer = makeImpulseResponse(ctx, 2.0, 2.0);
+    lastNode.connect(convolver);
+    lastNode = convolver;
+  }
+
+  // Robotize (ring mod)
+  if(document.getElementById('robotize').checked){
+    const modGain = ctx.createGain(); modGain.gain.value = 0.5;
+    const modOsc = ctx.createOscillator(); modOsc.type = 'square';
+    modOsc.frequency.value = 30; // low frequency for robot ring
+    modOsc.connect(modGain);
+    const merger = ctx.createGain();
+    lastNode.connect(merger);
+    modGain.connect(merger.gain); // multiply signal amplitude by LFO -> ring-mod style approximation
+    modOsc.start();
+    lastNode = merger;
+  }
+
+  // Final connection to destination
+  lastNode.connect(gain);
+  gain.connect(ctx.destination);
+
+  // Save fx nodes for potential control / stop
+  fxNodes = {source, nodes:[lowShelf, highShelf, bandpass, distort, convolver, gain]};
+
+  source.start(0);
+  status('Playing with FX...');
+  source.onended = () => { status('Playback ended.'); };
+}
+
+// Simple distortion curve
+function makeDistortionCurve(amount) {
+  const k = typeof amount === 'number' ? amount : 50;
+  const n_samples = 44100;
+  const curve = new Float32Array(n_samples);
+  const deg = Math.PI / 180;
+  let i = 0;
+  for (; i < n_samples; ++i) {
+    const x = (i * 2) / n_samples - 1;
+    curve[i] = ((3 + k) * x * 20 * deg) / (Math.PI + k * Math.abs(x));
+  }
+  return curve;
+}
+
+// small impulse reverb
+function makeImpulseResponse(ctx, duration = 2.0, decay = 2.0) {
+  const rate = ctx.sampleRate;
+  const length = rate * duration;
+  const impulse = ctx.createBuffer(2, length, rate);
+  for (let i = 0; i < 2; i++) {
+    const channelData = impulse.getChannelData(i);
+    for (let j = 0; j < length; j++) {
+      channelData[j] = (Math.random() * 2 - 1) * Math.pow(1 - j / length, decay);
+    }
+  }
+  return impulse;
+}
+
+// Play raw (original)
+btnPlayRaw.onclick = () => {
+  if(!rawAudioBuffer) return;
+  if(!audioContext) audioContext = new (window.AudioContext||window.webkitAudioContext)();
+  const src = audioContext.createBufferSource();
+  src.buffer = rawAudioBuffer;
+  src.connect(audioContext.destination);
+  src.start();
+  status('Playing raw audio...');
+};
+
+// Play with FX
+btnPlayFx.onclick = async () => {
+  if(!rawAudioBuffer) return;
+  await playBufferWithFx(rawAudioBuffer);
+};
+
+// ---------- Simple waveform draw ----------
+function drawWave(buffer){
+  const canvas = document.getElementById('waveCanvas');
+  const ctx = canvas.getContext('2d');
+  const dpr = devicePixelRatio || 1;
+  const w = canvas.clientWidth * dpr;
+  const h = canvas.clientHeight * dpr;
+  canvas.width = w; canvas.height = h;
+  ctx.clearRect(0,0,w,h);
+  const data = buffer.getChannelData(0);
+  const step = Math.ceil(data.length / w);
+  ctx.fillStyle = '#002b33';
+  ctx.fillRect(0,0,w,h);
+  ctx.lineWidth = 1 * dpr;
+  ctx.strokeStyle = '#58d0ff';
+  ctx.beginPath();
+  for (let i = 0; i < w; i++) {
+    const min = 0, max = 0;
+    const start = i * step;
+    let sum = 0;
+    for (let j = 0; j < step && (start + j) < data.length; j++) {
+      sum += Math.abs(data[start + j]);
+    }
+    const v = sum / step;
+    const y = (1 - v) * (h / 2);
+    if (i === 0) ctx.moveTo(i, y);
+    else ctx.lineTo(i, y);
+  }
+  ctx.stroke();
+}
+
+// ---------- Presets ----------
+const preset = document.getElementById('preset');
+preset.onchange = () => applyPreset(preset.value);
+
+function applyPreset(name) {
+  // These presets are heuristic: combine pitch multiplier and formant shift + effects toggles
+  const map = {
+    'neutral': {pitch:1.0, formant:0, reverb:false, distort:false, robot:false, band:false},
+    'child_female': {pitch:1.6, formant:2.2, reverb:false, distort:false, robot:false, band:false},
+    'child_male': {pitch:1.5, formant:1.5, reverb:false, distort:false, robot:false, band:false},
+    'young_female': {pitch:1.25, formant:1.0, reverb:false, distort:false, robot:false, band:false},
+    'young_male': {pitch:1.05, formant:0.6, reverb:false, distort:false, robot:false, band:false},
+    'adult_male': {pitch:0.92, formant:-0.5, reverb:false, distort:false, robot:false, band:false},
+    'adult_female': {pitch:1.02, formant:0.2, reverb:false, distort:false, robot:false, band:false},
+    'old_male': {pitch:0.75, formant:-2.0, reverb:true, distort:false, robot:false, band:true},
+    'old_female': {pitch:0.85, formant:-1.2, reverb:true, distort:false, robot:false, band:true},
+    'robot': {pitch:1.0, formant:-2.5, reverb:false, distort:true, robot:true, band:false},
+    'cartoon': {pitch:1.8, formant:3.0, reverb:false, distort:true, robot:false, band:false},
+    'alien': {pitch:0.6, formant:-3.0, reverb:true, distort:true, robot:true, band:true}
+  };
+  const p = map[name] || map['neutral'];
+  pitchRange.value = p.pitch; pitchRange.oninput();
+  formantRange.value = p.formant; formantRange.oninput();
+  document.getElementById('reverb').checked = !!p.reverb;
+  document.getElementById('distort').checked = !!p.distort;
+  document.getElementById('robotize').checked = !!p.robot;
+  document.getElementById('bandpass').checked = !!p.band;
+  log('Applied preset ' + name);
+}
+
+// ---------- Drag-to-control (pitch slider twin) ----------
+const dragTrack = document.getElementById('dragTrack');
+const dragKnob = document.getElementById('dragKnob');
+let dragging = false;
+dragKnob.addEventListener('pointerdown', (e)=>{ dragging=true; dragKnob.setPointerCapture(e.pointerId); });
+window.addEventListener('pointerup', (e)=>{ dragging=false; if(e.pointerId) dragKnob.releasePointerCapture?.(e.pointerId); });
+window.addEventListener('pointermove', (e)=>{
+  if(!dragging) return;
+  const rect = dragTrack.getBoundingClientRect();
+  const x = clamp(e.clientX - rect.left - 13, 0, rect.width - 26);
+  dragKnob.style.transform = `translateX(${x}px)`;
+  const pct = x / (rect.width - 26);
+  const val = parseFloat(pitchRange.min) + pct * (pitchRange.max - pitchRange.min);
+  pitchRange.value = val.toFixed(2);
+  pitchRange.oninput();
+});
+
+// ---------- Simple Bandpass toggle effect already used in playBufferWithFx ----------
+
+// ---------- Video Cartoonify (canvas) ----------
+const videoPreview = document.getElementById('videoPreview');
+const canvasVideo = document.getElementById('canvasVideo');
+const btnStartCam = document.getElementById('btnStartCam');
+const btnStopCam = document.getElementById('btnStopCam');
+const btnCartoon = document.getElementById('btnCartoon');
+const posterizeRange = document.getElementById('posterize');
+const btnCaptureFrame = document.getElementById('btnCaptureFrame');
+
+let camStreamVideo=null, cartoonMode=false, videoRAF=null;
+
+btnStartCam.onclick = async () => {
+  try {
+    camStreamVideo = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'}, audio:false});
+    videoPreview.srcObject = camStreamVideo;
+    await videoPreview.play();
+    btnStopCam.disabled = false; btnStartCam.disabled = true; btnCartoon.disabled=false;
+    canvasVideo.style.display = 'none';
+    log('Camera started for video.');
+  } catch (e) {
+    log('Camera error: ' + e.message);
+  }
+};
+btnStopCam.onclick = () => {
+  camStreamVideo?.getTracks().forEach(t=>t.stop());
+  camStreamVideo=null;
+  videoPreview.pause(); videoPreview.srcObject=null;
+  btnStartCam.disabled=false; btnStopCam.disabled=true; btnCartoon.disabled=true;
+  cancelAnimationFrame(videoRAF);
+  canvasVideo.style.display='none';
+  log('Camera stopped.');
+};
+
+btnCartoon.onclick = () => {
+  cartoonMode = !cartoonMode;
+  if(cartoonMode) startCartoonLoop();
+  else { canvasVideo.style.display='none'; videoPreview.style.display='block'; cancelAnimationFrame(videoRAF); }
+  btnCartoon.textContent = cartoonMode ? '🔁 Cartoon ON (click to stop)' : '🖼️ Toggle Cartoon';
+};
+
+btnCaptureFrame.onclick = () => {
+  // capture current processed frame in canvas and download
+  if(!cartoonMode) {
+    // capture raw video
+    const c = document.createElement('canvas'); c.width = videoPreview.videoWidth; c.height = videoPreview.videoHeight;
+    const cx = c.getContext('2d'); cx.drawImage(videoPreview,0,0,c.width,c.height);
+    c.toBlob(b=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download='frame.png'; a.click(); URL.revokeObjectURL(a.href); });
+  } else {
+    canvasVideo.toBlob(b=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download='frame-cartoon.png'; a.click(); URL.revokeObjectURL(a.href); });
+  }
+};
+
+function startCartoonLoop() {
+  canvasVideo.width = videoPreview.videoWidth;
+  canvasVideo.height = videoPreview.videoHeight;
+  canvasVideo.style.display = 'block';
+  videoPreview.style.display = 'none';
+  const ctx = canvasVideo.getContext('2d');
+  const px = posterizeRange.valueAsNumber || 6;
+  (function loop(){
+    if(!videoPreview.videoWidth) { videoRAF = requestAnimationFrame(loop); return; }
+    ctx.drawImage(videoPreview, 0, 0, canvasVideo.width, canvasVideo.height);
+    const img = ctx.getImageData(0,0,canvasVideo.width, canvasVideo.height);
+    posterize(img.data, posterizeRange.valueAsNumber);
+    edgeEnhance(img.data, canvasVideo.width, canvasVideo.height);
+    ctx.putImageData(img,0,0);
+    videoRAF = requestAnimationFrame(loop);
+  })();
+}
+
+// posterize: reduce colors to N levels
+function posterize(data, levels=6) {
+  const step = 255 / (levels-1);
+  for(let i=0;i<data.length;i+=4){
+    data[i] = Math.round(data[i]/step)*step;       // R
+    data[i+1] = Math.round(data[i+1]/step)*step;   // G
+    data[i+2] = Math.round(data[i+2]/step)*step;   // B
+  }
+}
+
+// simple edge detection & sketch overlay (unsharp)
+function edgeEnhance(data, w, h) {
+  // compute luminance and a sobel edge map quickly (approx)
+  const lum = new Float32Array(w*h);
+  for(let y=0;y<h;y++){
+    for(let x=0;x<w;x++){
+      const i = (y*w + x) * 4;
+      lum[y*w + x] = 0.2126*data[i] + 0.7152*data[i+1] + 0.0722*data[i+2];
+    }
+  }
+  const thresh = 60;
+  for(let y=1;y<h-1;y++){
+    for(let x=1;x<w-1;x++){
+      const gx = (
+        -lum[(y-1)*w + (x-1)] - 2*lum[y*w + (x-1)] - lum[(y+1)*w + (x-1)]
+        + lum[(y-1)*w + (x+1)] + 2*lum[y*w + (x+1)] + lum[(y+1)*w + (x+1)]
+      );
+      const gy = (
+        -lum[(y-1)*w + (x-1)] - 2*lum[(y-1)*w + x] - lum[(y-1)*w + (x+1)]
+        + lum[(y+1)*w + (x-1)] + 2*lum[(y+1)*w + x] + lum[(y+1)*w + (x+1)]
+      );
+      const g = Math.sqrt(gx*gx + gy*gy);
+      if (g > thresh) {
+        const i = (y*w + x) * 4;
+        // darken edge (draw black line)
+        data[i] = data[i+1] = data[i+2] = Math.max(0, data[i]*0.2);
+      }
+    }
+  }
+}
+
+// ---------- helpers: small UI wiring ----------
+document.getElementById('bandpass').addEventListener('change', ()=> log('Bandpass ' + (document.getElementById('bandpass').checked ? 'ON' : 'OFF')));
+document.getElementById('reverb').addEventListener('change', ()=> log('Reverb ' + (document.getElementById('reverb').checked ? 'ON' : 'OFF')));
+document.getElementById('distort').addEventListener('change', ()=> log('Distortion ' + (document.getElementById('distort').checked ? 'ON' : 'OFF')));
+document.getElementById('robotize').addEventListener('change', ()=> log('Robotize ' + (document.getElementById('robotize').checked ? 'ON' : 'OFF')));
+
+// ---------- initial state ----------
+status('Ready. Record then play with presets and sliders.');
+log('Kavishe Voice Lab ready.');
+
+// End of script
+</script>
+</body>
+</html>
